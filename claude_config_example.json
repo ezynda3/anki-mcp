@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "anki": {
+      "command": "go",
+      "args": ["run", "/path/to/anki-mcp/main.go"],
+      "env": {
+        "ANKI_CONNECT_URL": "http://localhost:8765"
+      }
+    }
+  }
+}
