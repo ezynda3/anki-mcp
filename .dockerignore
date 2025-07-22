@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+example_usage.md
+*.md
+
+# Build artifacts
+anki-mcp
+dist/
+
+# Test files
+*_test.go
+coverage.out
+coverage.txt
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# GitHub
+.github/
+
+# GoReleaser
+.goreleaser.yml
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Makefile
+Makefile

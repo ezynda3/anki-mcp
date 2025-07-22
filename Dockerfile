@@ -1,5 +1,19 @@
-FROM scratch
+# Build stage
+FROM golang:1.21-alpine AS builder
 
-COPY anki-mcp /anki-mcp
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 
-ENTRYPOINT ["/anki-mcp"]
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o anki-mcp .
+
+# Final stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+
+COPY --from=builder /app/anki-mcp .
+
+ENTRYPOINT ["./anki-mcp"]

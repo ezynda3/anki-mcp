@@ -1,12 +1,12 @@
-project_name: anki-mcp
+version: 2
 
 before:
   hooks:
     - go mod tidy
-    - go generate ./...
 
 builds:
-  - env:
+  - id: anki-mcp
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -15,37 +15,36 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    binary: anki-mcp
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
+    binary: anki-mcp
+    main: .
 
 archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
+  - id: default
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Os }}_
+      {{- .Arch }}
     files:
       - README.md
-      - LICENSE
+      - LICENSE*
       - claude_config_example.json
       - example_usage.md
 
 checksum:
   name_template: 'checksums.txt'
+  algorithm: sha256
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  name_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
 
 changelog:
   sort: asc
@@ -53,10 +52,8 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
-      - '^ci:'
-      - '^chore:'
-      - '^style:'
-      - '^refactor:'
+      - Merge pull request
+      - Merge branch
 
 release:
   github:
@@ -64,103 +61,5 @@ release:
     name: anki-mcp
   draft: false
   prerelease: auto
-  name_template: "{{.ProjectName}} {{.Version}}"
-  header: |
-    ## Anki MCP Server {{ .Tag }}
-    
-    A Model Context Protocol (MCP) server for managing Anki flashcards through AnkiConnect.
-    
-    ### Installation
-    
-    Download the appropriate binary for your platform from the assets below.
-    
-    ### Usage
-    
-    1. Ensure Anki is running with AnkiConnect addon installed
-    2. Configure your MCP client (e.g., Claude Desktop) to use the binary
-    3. Start creating and managing Anki cards through your AI assistant!
-    
-    See the [README](https://github.com/ezynda3/anki-mcp/blob/main/README.md) for detailed setup instructions.
-  footer: |
-    **Full Changelog**: https://github.com/ezynda3/anki-mcp/compare/{{ .PreviousTag }}...{{ .Tag }}
-    
-    ---
-    
-    ### Verification
-    
-    All binaries are signed and checksums are provided. Verify downloads using:
-    ```bash
-    sha256sum -c checksums.txt
-    ```
-
-brews:
-  - tap:
-      owner: ezynda3
-      name: homebrew-tap
-    folder: Formula
-    homepage: https://github.com/ezynda3/anki-mcp
-    description: "MCP server for managing Anki flashcards through AnkiConnect"
-    license: MIT
-    test: |
-      system "#{bin}/anki-mcp --version"
-    install: |
-      bin.install "anki-mcp"
-
-nfpms:
-  - id: packages
-    package_name: anki-mcp
-    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    vendor: ezynda3
-    homepage: https://github.com/ezynda3/anki-mcp
-    maintainer: ezynda3 <noreply@github.com>
-    description: MCP server for managing Anki flashcards through AnkiConnect
-    license: MIT
-    formats:
-      - deb
-      - rpm
-      - apk
-    bindir: /usr/bin
-    contents:
-      - src: ./README.md
-        dst: /usr/share/doc/anki-mcp/README.md
-      - src: ./claude_config_example.json
-        dst: /usr/share/doc/anki-mcp/claude_config_example.json
-      - src: ./example_usage.md
-        dst: /usr/share/doc/anki-mcp/example_usage.md
-
-dockers:
-  - image_templates:
-      - "ghcr.io/ezynda3/anki-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/ezynda3/anki-mcp:latest-amd64"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/ezynda3/anki-mcp"
-      - "--platform=linux/amd64"
-  - image_templates:
-      - "ghcr.io/ezynda3/anki-mcp:{{ .Version }}-arm64"
-      - "ghcr.io/ezynda3/anki-mcp:latest-arm64"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.source=https://github.com/ezynda3/anki-mcp"
-      - "--platform=linux/arm64"
-    goarch: arm64
-
-docker_manifests:
-  - name_template: "ghcr.io/ezynda3/anki-mcp:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/ezynda3/anki-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/ezynda3/anki-mcp:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/ezynda3/anki-mcp:latest"
-    image_templates:
-      - "ghcr.io/ezynda3/anki-mcp:latest-amd64"
-      - "ghcr.io/ezynda3/anki-mcp:latest-arm64"
+  name_template: "{{ .Tag }}"
+  mode: replace
