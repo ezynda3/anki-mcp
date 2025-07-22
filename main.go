@@ -75,11 +75,11 @@ func (a *AnkiMCPServer) registerTools(s *server.MCPServer) {
 		),
 		mcp.WithString("front",
 			mcp.Required(),
-			mcp.Description("Front side content of the card"),
+			mcp.Description("Front side content of the card (HTML supported, use [sound:filename] for audio)"),
 		),
 		mcp.WithString("back",
 			mcp.Required(),
-			mcp.Description("Back side content of the card"),
+			mcp.Description("Back side content of the card (HTML supported, use [sound:filename] for audio)"),
 		),
 		mcp.WithString("model_name",
 			mcp.Description("Model/note type to use (default: Basic)"),
@@ -128,25 +128,25 @@ func (a *AnkiMCPServer) registerTools(s *server.MCPServer) {
 		),
 		mcp.WithString("data",
 			mcp.Required(),
-			mcp.Description("Base64 encoded media file data"),
+			mcp.Description("Media data - either base64 encoded data, a data URI (data:type/subtype;base64,...), or a file path to the media file"),
 		),
 	)
 	s.AddTool(addMediaTool, a.handleAddMedia)
 
-	// Tool: Create Card with Media (simplified)
+	// Tool: Create Card with Media
 	createCardWithMediaTool := mcp.NewTool("create_card_with_media",
-		mcp.WithDescription("Create a new Anki card with media attachments"),
+		mcp.WithDescription("Create a new Anki card with media attachments. Media files are uploaded but not automatically embedded - use [sound:filename] or <img src=\"filename\"> tags in your content"),
 		mcp.WithString("deck_name",
 			mcp.Required(),
 			mcp.Description("Name of the deck to add the card to"),
 		),
 		mcp.WithString("front",
 			mcp.Required(),
-			mcp.Description("Front side content of the card"),
+			mcp.Description("Front side content of the card (HTML supported, use [sound:filename] for audio)"),
 		),
 		mcp.WithString("back",
 			mcp.Required(),
-			mcp.Description("Back side content of the card"),
+			mcp.Description("Back side content of the card (HTML supported, use [sound:filename] for audio)"),
 		),
 		mcp.WithString("model_name",
 			mcp.Description("Model/note type to use (default: Basic)"),
@@ -155,16 +155,16 @@ func (a *AnkiMCPServer) registerTools(s *server.MCPServer) {
 			mcp.Description("Tags to add to the card"),
 		),
 		mcp.WithString("audio_filename",
-			mcp.Description("Audio filename to attach"),
+			mcp.Description("Filename for the audio file (e.g., 'pronunciation.mp3')"),
 		),
 		mcp.WithString("audio_data",
-			mcp.Description("Base64 encoded audio data"),
+			mcp.Description("Audio data - either base64 encoded audio, a data URI (data:audio/mpeg;base64,...), or a file path to an audio file"),
 		),
 		mcp.WithString("image_filename",
-			mcp.Description("Image filename to attach"),
+			mcp.Description("Filename for the image file (e.g., 'diagram.png')"),
 		),
 		mcp.WithString("image_data",
-			mcp.Description("Base64 encoded image data"),
+			mcp.Description("Image data - either base64 encoded image, a data URI (data:image/png;base64,...), or a file path to an image file"),
 		),
 	)
 	s.AddTool(createCardWithMediaTool, a.handleCreateCardWithMedia)
@@ -404,8 +404,14 @@ func (a *AnkiMCPServer) handleAddMedia(ctx context.Context, request mcp.CallTool
 		return errorResult("data is required and must be a string"), nil
 	}
 
+	// Process the media data (convert from file path if needed)
+	processedData, err := processMediaData(dataStr)
+	if err != nil {
+		return errorResult(fmt.Sprintf("Failed to process media data: %v", err)), nil
+	}
+
 	// Decode base64 data
-	data, err := base64.StdEncoding.DecodeString(dataStr)
+	data, err := base64.StdEncoding.DecodeString(processedData)
 	if err != nil {
 		return errorResult(fmt.Sprintf("Failed to decode base64 data: %v", err)), nil
 	}
@@ -474,10 +480,14 @@ func (a *AnkiMCPServer) handleCreateCardWithMedia(ctx context.Context, request m
 	// Process audio file
 	if audioFilename, ok := args["audio_filename"].(string); ok && audioFilename != "" {
 		if audioData, ok := args["audio_data"].(string); ok && audioData != "" {
+			// Process the audio data (convert from file path if needed)
+			processedData, err := processMediaData(audioData)
+			if err != nil {
+				return errorResult(fmt.Sprintf("Failed to process audio data: %v", err)), nil
+			}
 			note.Audio = append(note.Audio, MediaFile{
 				Filename: audioFilename,
-				Data:     audioData,
-				Fields:   []string{"Front"},
+				Data:     processedData,
 			})
 		}
 	}
@@ -485,10 +495,14 @@ func (a *AnkiMCPServer) handleCreateCardWithMedia(ctx context.Context, request m
 	// Process image file
 	if imageFilename, ok := args["image_filename"].(string); ok && imageFilename != "" {
 		if imageData, ok := args["image_data"].(string); ok && imageData != "" {
+			// Process the image data (convert from file path if needed)
+			processedData, err := processMediaData(imageData)
+			if err != nil {
+				return errorResult(fmt.Sprintf("Failed to process image data: %v", err)), nil
+			}
 			note.Picture = append(note.Picture, MediaFile{
 				Filename: imageFilename,
-				Data:     imageData,
-				Fields:   []string{"Front"},
+				Data:     processedData,
 			})
 		}
 	}
@@ -596,4 +610,40 @@ func errorResult(message string) *mcp.CallToolResult {
 		},
 		IsError: true,
 	}
+}
+
+// fileToBase64 reads a file and returns its contents as a base64 string
+func fileToBase64(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// processMediaData handles both base64 data and file paths
+// If the input looks like a file path and the file exists, it reads and converts to base64
+// If it's a data URI, it extracts the base64 portion
+// Otherwise, it assumes the input is already base64 encoded
+func processMediaData(data string) (string, error) {
+	// Check if it's a data URI and extract base64 portion
+	if strings.HasPrefix(data, "data:") {
+		parts := strings.Split(data, ",")
+		if len(parts) == 2 {
+			return parts[1], nil
+		}
+		return "", fmt.Errorf("invalid data URI format")
+	}
+
+	// Check if it's likely a file path (contains / or \ and doesn't look like base64)
+	if (strings.Contains(data, "/") || strings.Contains(data, "\\")) && !strings.Contains(data, "base64,") {
+		// Check if file exists
+		if _, err := os.Stat(data); err == nil {
+			// File exists, read and convert to base64
+			return fileToBase64(data)
+		}
+	}
+
+	// Assume it's already base64 data
+	return data, nil
 }
